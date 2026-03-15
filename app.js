@@ -2,11 +2,12 @@ let selectedDate = new Date();
 selectedDate.setHours(0,0,0,0);
 let userData = JSON.parse(localStorage.getItem('cycleData')) || { dailyLogs: {} };
 
+// Helper to save data
 function saveData() {
     localStorage.setItem('cycleData', JSON.stringify(userData));
 }
 
-// --- CYCLE ANALYSIS LOGIC ---
+// Get dates where period starts
 function getPeriodStarts() {
     const dates = Object.keys(userData.dailyLogs)
         .filter(date => userData.dailyLogs[date].period === 'yes')
@@ -18,40 +19,36 @@ function getPeriodStarts() {
     });
 }
 
+// Calculate cycle metrics
 function getCycleAnalysis() {
     const starts = getPeriodStarts();
     const defaults = { avgLength: 28, shortest: 28, lastStart: starts[starts.length - 1] || null };
-    
     if (starts.length < 2) return defaults;
 
     let lengths = [];
     for (let i = 1; i < starts.length; i++) {
-        const diff = (new Date(starts[i]) - new Date(starts[i-1])) / 86400000;
-        lengths.push(diff);
+        lengths.push((new Date(starts[i]) - new Date(starts[i-1])) / 86400000);
     }
-
     return {
-        avgLength: Math.round(lengths.slice(-12).reduce((a,b) => a+b, 0) / Math.min(lengths.length, 12)) || 28,
-        shortest: Math.min(...lengths.slice(-6)) || 28,
+        avgLength: Math.round(lengths.slice(-12).reduce((a,b) => a+b, 0) / Math.min(lengths.length, 12)),
+        shortest: Math.min(...lengths.slice(-6)),
         lastStart: starts[starts.length - 1]
     };
 }
 
-// --- UI UPDATES ---
-function changeWeek(direction) {
-    selectedDate.setDate(selectedDate.getDate() + (direction * 7));
+function changeWeek(dir) {
+    selectedDate.setDate(selectedDate.getDate() + (dir * 7));
     renderWeek();
     updateStatus();
 }
 
 function logVal(key, val) {
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    if (!userData.dailyLogs[dateStr]) userData.dailyLogs[dateStr] = {};
-
-    if (userData.dailyLogs[dateStr][key] === val) {
-        delete userData.dailyLogs[dateStr][key];
+    const dStr = selectedDate.toISOString().split('T')[0];
+    if (!userData.dailyLogs[dStr]) userData.dailyLogs[dStr] = {};
+    if (userData.dailyLogs[dStr][key] === val) {
+        delete userData.dailyLogs[dStr][key];
     } else {
-        userData.dailyLogs[dateStr][key] = val;
+        userData.dailyLogs[dStr][key] = val;
     }
     saveData();
     renderWeek();
@@ -60,23 +57,20 @@ function logVal(key, val) {
 
 function renderWeek() {
     const grid = document.getElementById('week-grid');
-    if (!grid) return; // Safety check
+    if (!grid) return;
     grid.innerHTML = '';
     
     const analysis = getCycleAnalysis();
-    const today = new Date(); 
-    today.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
 
-    // --- FIND THE ONE OVULATION DAY ---
+    // One persistent Ovulation Day
     let actualOvu = null;
     if (analysis.lastStart) {
-        // Base Prediction
         let nextP = new Date(analysis.lastStart);
         nextP.setDate(nextP.getDate() + analysis.avgLength);
         actualOvu = new Date(nextP);
         actualOvu.setDate(actualOvu.getDate() - 14);
 
-        // Rule 4: LH+ Lock
         let hasLH = false;
         Object.keys(userData.dailyLogs).forEach(day => {
             if (day >= analysis.lastStart && userData.dailyLogs[day].lh === 'pos') {
@@ -86,12 +80,8 @@ function renderWeek() {
             }
         });
 
-        // Rule 3: Push to Today if passed
-        if (!hasLH && actualOvu < today) {
-            actualOvu = new Date(today);
-        }
+        if (!hasLH && actualOvu < today) actualOvu = new Date(today);
 
-        // Rule 5: Period Back-calculate
         const nextPStart = getPeriodStarts().find(s => s > analysis.lastStart);
         if (nextPStart && !hasLH) {
             actualOvu = new Date(nextPStart);
@@ -99,7 +89,6 @@ function renderWeek() {
         }
     }
 
-    // --- DRAW THE 7 DAYS ---
     for (let i = -3; i <= 3; i++) {
         let d = new Date(selectedDate);
         d.setDate(d.getDate() + i);
@@ -107,35 +96,29 @@ function renderWeek() {
         const log = userData.dailyLogs[dStr] || {};
 
         const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
-        const isConfirmed = log.pdg === 'pos';
-
-        // Rule 2: Fertile Window
+        
         let isFertile = false;
         if (analysis.lastStart && actualOvu) {
             const cd = Math.floor((d - new Date(analysis.lastStart)) / 86400000) + 1;
-            const fertEnd = new Date(actualOvu); 
-            fertEnd.setDate(fertEnd.getDate() + 2);
+            const fertEnd = new Date(actualOvu); fertEnd.setDate(fertEnd.getDate() + 2);
             if (cd >= (analysis.shortest - 20) && d <= fertEnd) isFertile = true;
         }
 
-        // Build HTML Elements
         let cell = document.createElement('div');
         cell.className = 'day-cell';
         if (d.toDateString() === selectedDate.toDateString()) cell.classList.add('selected');
         if (isFertile) cell.classList.add('post-ovulation');
 
-        let numberSpan = document.createElement('div');
-        numberSpan.className = 'day-number';
-        if (d.toDateString() === today.toDateString()) numberSpan.classList.add('today-bold');
-        
-        // Apply the Circle logic
+        let num = document.createElement('div');
+        num.className = 'day-number';
+        if (d.toDateString() === today.toDateString()) num.classList.add('today-bold');
         if (isOvuDay) {
-            numberSpan.classList.add('ovulation-day');
-            if (isConfirmed) numberSpan.classList.add('confirmed');
+            num.classList.add('ovulation-day');
+            if (log.pdg === 'pos') num.classList.add('confirmed');
         }
-
-        numberSpan.innerText = d.getDate();
-        cell.appendChild(numberSpan);
+        num.innerText = d.getDate();
+        
+        cell.appendChild(num);
 
         if (analysis.lastStart) {
             let cdLabel = document.createElement('div');
@@ -147,25 +130,21 @@ function renderWeek() {
         cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
         grid.appendChild(cell);
     }
-
     document.getElementById('month-display').innerText = selectedDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
 }
 
 function updateStatus() {
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    const log = userData.dailyLogs[dateStr] || {};
-    
+    const dStr = selectedDate.toISOString().split('T')[0];
+    const log = userData.dailyLogs[dStr] || {};
     document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
     
     const analysis = getCycleAnalysis();
     document.getElementById('prediction-text').innerText = analysis.lastStart ? 
         `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
 
-    // Reset and Update buttons
-    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-    Object.keys(log).forEach(key => {
-        const val = log[key];
-        const btn = document.querySelector(`button[onclick="logVal('${key}', '${val}')"]`);
+    document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
+    Object.keys(log).forEach(k => {
+        const btn = document.querySelector(`button[onclick="logVal('${k}', '${log[k]}')"]`);
         if (btn) btn.classList.add('active');
     });
 
@@ -173,20 +152,19 @@ function updateStatus() {
     document.getElementById('temp-input').value = log.temp || '';
 }
 
-// --- BACKUP & EXPORT ---
 function downloadBackup() {
     const blob = new Blob([JSON.stringify(userData)], {type: 'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `cycle_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `cycle_backup.json`;
     a.click();
 }
 
 function downloadCSV() {
     let csv = "Date,Period,LH,Clearblue,PdG,Temp,CM\n";
-    Object.keys(userData.dailyLogs).sort().forEach(date => {
-        const log = userData.dailyLogs[date];
-        csv += `${date},${log.period||''},${log.lh||''},${log.cb||''},${log.pdg||''},${log.temp||''},${log.cm||''}\n`;
+    Object.keys(userData.dailyLogs).sort().forEach(d => {
+        const l = userData.dailyLogs[d];
+        csv += `${d},${l.period||''},${l.lh||''},${l.cb||''},${l.pdg||''},${l.temp||''},${l.cm||''}\n`;
     });
     const blob = new Blob([csv], {type: 'text/csv'});
     const a = document.createElement('a');
@@ -195,6 +173,5 @@ function downloadCSV() {
     a.click();
 }
 
-// Initialize
 renderWeek();
 updateStatus();
