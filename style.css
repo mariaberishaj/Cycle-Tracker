@@ -187,3 +187,18 @@ input[type="number"] {
     margin-bottom: 15px; /* Adds a little space before the calendar starts */
     color: #333; /* A dark grey for better readability */
 }
+
+/* The base circle (Dashed by default) */
+.day-cell.ovulation-day {
+    border: 2px dashed var(--primary-blue);
+}
+
+/* The "Confirmed" state (Turns the dash into a solid line) */
+.day-cell.confirmed {
+    border-style: solid !important;
+}
+
+/* The two days after ovulation tinted blue */
+.day-cell.post-ovulation {
+    background-color: #e1f0ff; 
+}
