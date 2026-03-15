@@ -9,12 +9,12 @@
 
 /* --- BASE LAYOUT --- */
 body { 
-    font-family: -apple-system, sans-serif; 
-    background: #fff5f7;                    /* Very light pink background */
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+    background: #fff5f7;
     margin: 0; 
     display: flex; 
     justify-content: center; 
-    -webkit-tap-highlight-color: transparent;
+    min-height: 100vh;
 }
 
 #app { 
@@ -24,6 +24,7 @@ body {
     min-height: 100vh; 
     padding: 20px; 
     box-sizing: border-box; 
+    display: block !important; /* Forces the app container to show */
 }
 
 /* --- CALENDAR TOP --- */
@@ -40,7 +41,7 @@ body {
     font-size: 1.8rem; 
     color: var(--soft-pink); 
     cursor: pointer; 
-    padding: 0 15px;
+    padding: 10px;
 }
 
 #month-display {
@@ -58,13 +59,17 @@ body {
     color: #888; 
     font-size: 0.8rem; 
     margin-top: 15px;
-    margin-bottom: 5px; 
+    margin-bottom: 10px; 
 }
 
+/* This is the critical section for making the days appear */
 .week-container { 
-    display: grid; 
-    grid-template-columns: repeat(7, 1fr); 
-    text-align: center; 
+    display: grid !important; 
+    grid-template-columns: repeat(7, 1fr) !important; 
+    gap: 5px;
+    width: 100%;
+    min-height: 50px; /* Ensures it doesn't collapse to 0 height */
+    margin-bottom: 20px;
 }
 
 .day-cell { 
@@ -74,40 +79,71 @@ body {
     padding: 10px 0; 
     border-radius: 10px; 
     cursor: pointer;
-    transition: background 0.2s;
+    min-width: 0;
 }
 
-/* --- DATE CIRCLES & INDICATORS --- */
+/* --- DATE CIRCLES --- */
 .day-number { 
     width: 35px; 
     height: 35px; 
-    display: flex; 
+    display: flex !important; /* Ensures the circle is visible */
     align-items: center; 
     justify-content: center; 
     border-radius: 50%; 
     position: relative; 
-    font-weight: 500;
+    font-weight: 600;
+    color: #333; /* Forces text color to dark grey */
     box-sizing: border-box;
 }
 
-/* Today and Selection */
 .today-bold { 
     font-weight: 900 !important; 
-    color: var(--dark-pink);
+    color: var(--dark-pink) !important;
 }
 
 .selected { 
-    background-color: var(--light-grey); 
+    background-color: var(--light-grey) !important; 
 }
 
-/* Ovulation States */
-/* Dashed = Estimated */
+/* Ovulation Circles */
 .ovulation-day { 
     border: 2px dashed var(--fertile-blue) !important; 
 }
 
-/* Solid = Confirmed (via PdG Pos) */
 .ovulation-day.confirmed { 
     background-color: var(--fertile-blue) !important; 
     color: white !important; 
     border-style: solid !important;
+}
+
+.post-ovulation { 
+    background-color: var(--light-blue-tint); 
+}
+
+.cycle-day { 
+    font-size: 0.65rem; 
+    color: #999; 
+    margin-top: 4px; 
+}
+
+/* --- LOGGING SECTION --- */
+.date-header {
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin: 20px 0 10px;
+    color: #333;
+}
+
+.action-card {
+    background: white;
+    padding: 15px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    border: 1px solid var(--soft-pink);
+}
+
+.log-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
