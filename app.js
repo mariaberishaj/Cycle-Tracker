@@ -140,4 +140,61 @@ function renderWeek() {
         if (analysis.lastStart) {
             let cdLabel = document.createElement('div');
             cdLabel.className = 'cycle-day';
-            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/
+            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/86400000)+1}`;
+            cell.appendChild(cdLabel);
+        }
+
+        cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
+        grid.appendChild(cell);
+    }
+
+    document.getElementById('month-display').innerText = selectedDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+}
+
+function updateStatus() {
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const log = userData.dailyLogs[dateStr] || {};
+    
+    document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+    
+    const analysis = getCycleAnalysis();
+    document.getElementById('prediction-text').innerText = analysis.lastStart ? 
+        `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
+
+    // Reset and Update buttons
+    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
+    Object.keys(log).forEach(key => {
+        const val = log[key];
+        const btn = document.querySelector(`button[onclick="logVal('${key}', '${val}')"]`);
+        if (btn) btn.classList.add('active');
+    });
+
+    if (document.getElementById('cm-select')) document.getElementById('cm-select').value = log.cm || 'none';
+    document.getElementById('temp-input').value = log.temp || '';
+}
+
+// --- BACKUP & EXPORT ---
+function downloadBackup() {
+    const blob = new Blob([JSON.stringify(userData)], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cycle_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+}
+
+function downloadCSV() {
+    let csv = "Date,Period,LH,Clearblue,PdG,Temp,CM\n";
+    Object.keys(userData.dailyLogs).sort().forEach(date => {
+        const log = userData.dailyLogs[date];
+        csv += `${date},${log.period||''},${log.lh||''},${log.cb||''},${log.pdg||''},${log.temp||''},${log.cm||''}\n`;
+    });
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = "cycle_data.csv";
+    a.click();
+}
+
+// Initialize
+renderWeek();
+updateStatus();
