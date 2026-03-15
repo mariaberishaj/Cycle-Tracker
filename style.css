@@ -3,7 +3,7 @@
 :root {
     --dark-pink: #d63384;    /* Used for confirmed periods */
     --soft-pink: #ff85a2;    /* Used for headers and borders */
-    --fertile-blue: #007bff; /* Used for ovulation and fertility markers */
+    --fertile-blue: #82caff; /* Used for ovulation and fertility markers */
     --light-grey: #e9ecef;   /* Used for the selection highlight */
 }
 
