@@ -87,6 +87,7 @@ body {
     border-radius: 50%; 
     position: relative; 
     font-weight: 500;
+    box-sizing: border-box;
 }
 
 /* Today and Selection */
@@ -100,100 +101,13 @@ body {
 }
 
 /* Ovulation States */
+/* Dashed = Estimated */
 .ovulation-day { 
-    border: 2px dashed var(--fertile-blue); 
+    border: 2px dashed var(--fertile-blue) !important; 
 }
 
-.confirmed { 
+/* Solid = Confirmed (via PdG Pos) */
+.ovulation-day.confirmed { 
     background-color: var(--fertile-blue) !important; 
     color: white !important; 
     border-style: solid !important;
-}
-
-/* Fertile Window / Post-Ovulation Tint */
-.post-ovulation { 
-    background-color: var(--light-blue-tint); 
-}
-
-.cycle-day { 
-    font-size: 0.6rem; 
-    color: #aaa; 
-    margin-top: 4px; 
-}
-
-/* --- LOGGING SECTION --- */
-.date-header {
-    font-weight: bold;
-    font-size: 1.2rem;
-    margin: 20px 0 10px;
-    color: #333;
-}
-
-.action-card {
-    background: white;
-    padding: 15px;
-    border-radius: 15px;
-    margin-bottom: 15px;
-    border: 1px solid var(--soft-pink);
-    text-align: left;
-    font-size: 0.9rem;
-}
-
-.action-card p {
-    margin: 5px 0;
-}
-
-.log-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.log-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: white;
-    padding: 5px 0;
-}
-
-.log-row span {
-    font-weight: 600;
-    color: #444;
-}
-
-/* --- BUTTONS & INPUTS --- */
-.btn-group { 
-    display: flex; 
-    gap: 5px; 
-}
-
-.btn-group button {
-    padding: 6px 12px;
-    font-size: 0.85rem;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background: #f9f9f9;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-/* Active State: Uses the soft pink theme */
-.btn-group button.active {
-    background-color: var(--soft-pink) !important; 
-    color: white !important;
-    border-color: var(--soft-pink) !important;
-    font-weight: bold !important;
-}
-
-input[type="number"], select {
-    padding: 6px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    background: #f9f9f9;
-}
-
-input[type="number"] {
-    width: 70px;
-    text-align: center;
