@@ -30,11 +30,13 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// --- FETCH EVENT ---
+// --- FETCH EVENT (Development Friendly) ---
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    // Try the network first
+    fetch(event.request).catch(() => {
+      // If network fails (offline), then look in the cache
+      return caches.match(event.request);
     })
   );
 });
