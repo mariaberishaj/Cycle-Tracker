@@ -1,30 +1,28 @@
-let selectedDate = new Date();
+let viewDate = new Date(); // Controls which week is shown
+viewDate.setHours(0,0,0,0);
+
+let selectedDate = new Date(); // Controls which day is being logged
 selectedDate.setHours(0,0,0,0);
+
 let userData = JSON.parse(localStorage.getItem('cycleData')) || { dailyLogs: {} };
 
-// Helper to save data
 function saveData() {
     localStorage.setItem('cycleData', JSON.stringify(userData));
 }
 
-// Get dates where period starts
 function getPeriodStarts() {
-    const dates = Object.keys(userData.dailyLogs)
-        .filter(date => userData.dailyLogs[date].period === 'yes')
-        .sort();
-    return dates.filter((date, i) => {
-        const prev = new Date(date);
+    const dates = Object.keys(userData.dailyLogs).filter(d => userData.dailyLogs[d].period === 'yes').sort();
+    return dates.filter((d, i) => {
+        const prev = new Date(d);
         prev.setDate(prev.getDate() - 1);
         return !dates.includes(prev.toISOString().split('T')[0]);
     });
 }
 
-// Calculate cycle metrics
 function getCycleAnalysis() {
     const starts = getPeriodStarts();
     const defaults = { avgLength: 28, shortest: 28, lastStart: starts[starts.length - 1] || null };
     if (starts.length < 2) return defaults;
-
     let lengths = [];
     for (let i = 1; i < starts.length; i++) {
         lengths.push((new Date(starts[i]) - new Date(starts[i-1])) / 86400000);
@@ -37,9 +35,14 @@ function getCycleAnalysis() {
 }
 
 function changeWeek(dir) {
-    selectedDate.setDate(selectedDate.getDate() + (dir * 7));
+    viewDate.setDate(viewDate.getDate() + (dir * 7));
     renderWeek();
-    updateStatus();
+}
+
+function selectDay(dateObj) {
+    selectedDate = new Date(dateObj);
+    renderWeek(); // Refresh colors/highlight
+    updateStatus(); // Update the form
 }
 
 function logVal(key, val) {
@@ -57,13 +60,10 @@ function logVal(key, val) {
 
 function renderWeek() {
     const grid = document.getElementById('week-grid');
-    if (!grid) return;
     grid.innerHTML = '';
-    
     const analysis = getCycleAnalysis();
     const today = new Date(); today.setHours(0,0,0,0);
 
-    // One persistent Ovulation Day
     let actualOvu = null;
     if (analysis.lastStart) {
         let nextP = new Date(analysis.lastStart);
@@ -79,58 +79,36 @@ function renderWeek() {
                 hasLH = true;
             }
         });
-
         if (!hasLH && actualOvu < today) actualOvu = new Date(today);
-
-        const nextPStart = getPeriodStarts().find(s => s > analysis.lastStart);
-        if (nextPStart && !hasLH) {
-            actualOvu = new Date(nextPStart);
-            actualOvu.setDate(actualOvu.getDate() - 14);
-        }
     }
 
+    // This creates the stable 7-day view centered on viewDate
     for (let i = -3; i <= 3; i++) {
-        let d = new Date(selectedDate);
+        let d = new Date(viewDate);
         d.setDate(d.getDate() + i);
         const dStr = d.toISOString().split('T')[0];
-        const log = userData.dailyLogs[dStr] || {};
-
-        const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
         
-        let isFertile = false;
-        if (analysis.lastStart && actualOvu) {
-            const cd = Math.floor((d - new Date(analysis.lastStart)) / 86400000) + 1;
-            const fertEnd = new Date(actualOvu); fertEnd.setDate(fertEnd.getDate() + 2);
-            if (cd >= (analysis.shortest - 20) && d <= fertEnd) isFertile = true;
-        }
+        const isSelected = d.toDateString() === selectedDate.toDateString();
+        const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
 
         let cell = document.createElement('div');
         cell.className = 'day-cell';
-        if (d.toDateString() === selectedDate.toDateString()) cell.classList.add('selected');
-        if (isFertile) cell.classList.add('post-ovulation');
+        if (isSelected) cell.classList.add('selected');
 
         let num = document.createElement('div');
         num.className = 'day-number';
         if (d.toDateString() === today.toDateString()) num.classList.add('today-bold');
         if (isOvuDay) {
             num.classList.add('ovulation-day');
-            if (log.pdg === 'pos') num.classList.add('confirmed');
+            if (userData.dailyLogs[dStr]?.pdg === 'pos') num.classList.add('confirmed');
         }
         num.innerText = d.getDate();
-        
         cell.appendChild(num);
 
-        if (analysis.lastStart) {
-            let cdLabel = document.createElement('div');
-            cdLabel.className = 'cycle-day';
-            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/86400000)+1}`;
-            cell.appendChild(cdLabel);
-        }
-
-        cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
+        cell.onclick = () => selectDay(d);
         grid.appendChild(cell);
     }
-    document.getElementById('month-display').innerText = selectedDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+    document.getElementById('month-display').innerText = viewDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
 }
 
 function updateStatus() {
@@ -138,39 +116,14 @@ function updateStatus() {
     const log = userData.dailyLogs[dStr] || {};
     document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
     
-    const analysis = getCycleAnalysis();
-    document.getElementById('prediction-text').innerText = analysis.lastStart ? 
-        `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
-
     document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
     Object.keys(log).forEach(k => {
         const btn = document.querySelector(`button[onclick="logVal('${k}', '${log[k]}')"]`);
         if (btn) btn.classList.add('active');
     });
 
-    if (document.getElementById('cm-select')) document.getElementById('cm-select').value = log.cm || 'none';
     document.getElementById('temp-input').value = log.temp || '';
-}
-
-function downloadBackup() {
-    const blob = new Blob([JSON.stringify(userData)], {type: 'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `cycle_backup.json`;
-    a.click();
-}
-
-function downloadCSV() {
-    let csv = "Date,Period,LH,Clearblue,PdG,Temp,CM\n";
-    Object.keys(userData.dailyLogs).sort().forEach(d => {
-        const l = userData.dailyLogs[d];
-        csv += `${d},${l.period||''},${l.lh||''},${l.cb||''},${l.pdg||''},${l.temp||''},${l.cm||''}\n`;
-    });
-    const blob = new Blob([csv], {type: 'text/csv'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = "cycle_data.csv";
-    a.click();
+    if (document.getElementById('cm-select')) document.getElementById('cm-select').value = log.cm || 'none';
 }
 
 renderWeek();
