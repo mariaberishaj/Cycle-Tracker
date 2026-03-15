@@ -21,12 +21,15 @@ function getPeriodStarts() {
 function getCycleAnalysis() {
     const starts = getPeriodStarts();
     const defaults = { avgLength: 28, shortest: 28, lastStart: starts[starts.length - 1] || null };
+    
     if (starts.length < 2) return defaults;
 
     let lengths = [];
     for (let i = 1; i < starts.length; i++) {
-        lengths.push((new Date(starts[i]) - new Date(starts[i-1])) / 86400000);
+        const diff = (new Date(starts[i]) - new Date(starts[i-1])) / 86400000;
+        lengths.push(diff);
     }
+
     return {
         avgLength: Math.round(lengths.slice(-12).reduce((a,b) => a+b, 0) / Math.min(lengths.length, 12)) || 28,
         shortest: Math.min(...lengths.slice(-6)) || 28,
@@ -57,21 +60,23 @@ function logVal(key, val) {
 
 function renderWeek() {
     const grid = document.getElementById('week-grid');
+    if (!grid) return; // Safety check
     grid.innerHTML = '';
+    
     const analysis = getCycleAnalysis();
-    const today = new Date(); today.setHours(0,0,0,0);
+    const today = new Date(); 
+    today.setHours(0,0,0,0);
 
     // --- FIND THE ONE OVULATION DAY ---
     let actualOvu = null;
-
     if (analysis.lastStart) {
-        // Start with the basic Rule 1 Prediction (14 days before next period)
+        // Base Prediction
         let nextP = new Date(analysis.lastStart);
         nextP.setDate(nextP.getDate() + analysis.avgLength);
         actualOvu = new Date(nextP);
         actualOvu.setDate(actualOvu.getDate() - 14);
 
-        // Rule 4: If LH+ exists, OVERRIDE and lock to day after LH+
+        // Rule 4: LH+ Lock
         let hasLH = false;
         Object.keys(userData.dailyLogs).forEach(day => {
             if (day >= analysis.lastStart && userData.dailyLogs[day].lh === 'pos') {
@@ -81,12 +86,12 @@ function renderWeek() {
             }
         });
 
-        // Rule 3: If NO LH+ and predicted day has passed, PUSH it to today
+        // Rule 3: Push to Today if passed
         if (!hasLH && actualOvu < today) {
             actualOvu = new Date(today);
         }
 
-        // Rule 5: If a new period started, lock it to 14 days before that
+        // Rule 5: Period Back-calculate
         const nextPStart = getPeriodStarts().find(s => s > analysis.lastStart);
         if (nextPStart && !hasLH) {
             actualOvu = new Date(nextPStart);
@@ -94,7 +99,7 @@ function renderWeek() {
         }
     }
 
-    // --- RENDER THE DAYS ---
+    // --- DRAW THE 7 DAYS ---
     for (let i = -3; i <= 3; i++) {
         let d = new Date(selectedDate);
         d.setDate(d.getDate() + i);
@@ -104,14 +109,16 @@ function renderWeek() {
         const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
         const isConfirmed = log.pdg === 'pos';
 
-        // Fertile Window (Rule 2)
+        // Rule 2: Fertile Window
         let isFertile = false;
         if (analysis.lastStart && actualOvu) {
             const cd = Math.floor((d - new Date(analysis.lastStart)) / 86400000) + 1;
-            const fertEnd = new Date(actualOvu); fertEnd.setDate(fertEnd.getDate() + 2);
+            const fertEnd = new Date(actualOvu); 
+            fertEnd.setDate(fertEnd.getDate() + 2);
             if (cd >= (analysis.shortest - 20) && d <= fertEnd) isFertile = true;
         }
 
+        // Build HTML Elements
         let cell = document.createElement('div');
         cell.className = 'day-cell';
         if (d.toDateString() === selectedDate.toDateString()) cell.classList.add('selected');
@@ -121,12 +128,10 @@ function renderWeek() {
         numberSpan.className = 'day-number';
         if (d.toDateString() === today.toDateString()) numberSpan.classList.add('today-bold');
         
-        // APPLY CIRCLE
+        // Apply the Circle logic
         if (isOvuDay) {
-            numberSpan.classList.add('ovulation-day'); // Dashed by default in CSS
-            if (isConfirmed) {
-                numberSpan.classList.add('confirmed'); // Solid via CSS override
-            }
+            numberSpan.classList.add('ovulation-day');
+            if (isConfirmed) numberSpan.classList.add('confirmed');
         }
 
         numberSpan.innerText = d.getDate();
@@ -135,33 +140,4 @@ function renderWeek() {
         if (analysis.lastStart) {
             let cdLabel = document.createElement('div');
             cdLabel.className = 'cycle-day';
-            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/86400000)+1}`;
-            cell.appendChild(cdLabel);
-        }
-
-        cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
-        grid.appendChild(cell);
-    }
-    document.getElementById('month-display').innerText = selectedDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
-}
-function updateStatus() {
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    const log = userData.dailyLogs[dateStr] || {};
-    
-    document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
-    
-    const analysis = getCycleAnalysis();
-    document.getElementById('prediction-text').innerText = analysis.lastStart ? 
-        `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
-
-    // Update buttons
-    document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-    Object.keys(log).forEach(key => {
-        const val = log[key];
-        const btn = document.querySelector(`button[onclick="logVal('${key}', '${val}')"]`);
-        if (btn) btn.classList.add('active');
-    });
-
-    // Update select and input
-    if (document.getElementById('cm-select')) document.getElementById('cm-select').value = log.cm || 'none';
-    document.getElementById('
+            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/
