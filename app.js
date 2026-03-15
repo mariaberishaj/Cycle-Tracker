@@ -1,208 +1,166 @@
-// --- 1. APP SETUP & MEMORY ---
-// Track the date the user is currently looking at in the calendar
-let currentViewDate = new Date();
-// Track the specific day the user has tapped on
 let selectedDate = new Date();
-// Load saved data from the phone's storage, or create an empty structure if new
-let userData = JSON.parse(localStorage.getItem('cycleData')) || { dailyLogs: {}, history: [] };
+selectedDate.setHours(0,0,0,0);
+let userData = JSON.parse(localStorage.getItem('cycleData')) || { dailyLogs: {} };
 
-// This function runs automatically as soon as the website finishes loading
-window.onload = () => {
-    console.log("App initialized");
-    renderWeek();   // Draw the 7-day calendar view
-    updateStatus(); // Light up the buttons for the selected day
-};
-
-// --- 2. CALENDAR DRAWING LOGIC ---
-function renderWeek() {
-    // Connect to the "containers" we created in index.html
-    const grid = document.getElementById('week-grid');
-    const monthDisplay = document.getElementById('month-display');
-    const dateDisplay = document.getElementById('selected-date-display');
-    
-    // If the grid isn't found, stop the function to prevent a crash
-    if (!grid) return;
-
-    // Clear the current calendar so we can draw the fresh one
-    grid.innerHTML = '';
-
-    // Find the Sunday of the week we are currently viewing
-    let startOfWeek = new Date(currentViewDate);
-    startOfWeek.setDate(currentViewDate.getDate() - currentViewDate.getDay());
-    
-    // Update the Month Name at the top (e.g., "February 2026")
-    monthDisplay.innerText = startOfWeek.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-    // Update the Header for the selected day (e.g., "Monday, Feb 23")
-    const dateOptions = { weekday: 'long', month: 'long', day: 'numeric' };
-    dateDisplay.innerText = selectedDate.toLocaleDateString('en-US', dateOptions);
-
-    // Loop 7 times to create the 7 days of the week
-    for (let i = 0; i < 7; i++) {
-        let day = new Date(startOfWeek);
-        day.setDate(startOfWeek.getDate() + i);
-        
-        // dateKey is the unique ID for this day (YYYY-MM-DD)
-        const dateKey = day.toISOString().split('T')[0];
-        // Check if this specific day is the one the user clicked
-        const isSelected = day.toDateString() === selectedDate.toDateString();
-        // Check if this specific day is actually "Today" on the real-world calendar
-        const isToday = day.toDateString() === new Date().toDateString();
-        
-        // Create the HTML "Box" for this day
-        const dayCell = document.createElement('div');
-        dayCell.className = `day-cell ${isSelected ? 'selected' : ''}`;
-        
-        // When this day is tapped, update the selected date and refresh everything
-        dayCell.onclick = () => { 
-            selectedDate = new Date(day); 
-            renderWeek(); 
-            updateStatus(); 
-        };
-
-        // Calculate the Cycle Day (CD1, CD2, etc.)
-        let cd = calculateCycleDay(day);
-        
-        // Get visual styles (Red for period, blue for fertile) from our helper function
-        let statusClasses = getStatusClasses(day, dateKey, cd);
-
-        // Put the numbers into the Day Box
-        // We add a new "today-bold" class if isToday is true
-        dayCell.innerHTML = `
-            <span class="day-number ${statusClasses} ${isToday ? 'today-bold' : ''}">${day.getDate()}</span>
-            <span class="cycle-day">${cd > 0 ? cd : ''}</span>
-        `;
-        
-        // Add this day box into the main calendar grid
-        grid.appendChild(dayCell);
-    }
-}
-
-// --- 3. HELPER FUNCTIONS ---
-
-// Calculates how many days it has been since the most recent period started
-function calculateCycleDay(targetDate) {
-    let latestStart = null;
-    // Loop through all saved logs to find the most recent 'period' entry
-    Object.keys(userData.dailyLogs).forEach(dateStr => {
-        if (userData.dailyLogs[dateStr].period === 'yes') {
-            let d = new Date(dateStr);
-            if (d <= targetDate && (!latestStart || d > latestStart)) {
-                latestStart = d;
-            }
-        }
-    });
-    if (!latestStart) return 0;
-    // Math to convert time difference into a number of days
-    return Math.floor((targetDate - latestStart) / (86400000)) + 1;
-}
-
-// Decides which colors to show on the calendar dates
-function getStatusClasses(day, dateKey, cd) {
-    let classes = [];
-    const log = userData.dailyLogs[dateKey] || {};
-    
-    // If the user logged a period, add the red color class
-    if (log.period === 'yes') classes.push('confirmed-period');
-    
-    // If user has saved cycle history, calculate a basic fertility window
-    let shortest = 28; 
-    if (userData.history && userData.history.length >= 6) {
-        shortest = Math.min(...userData.history.map(h => h.length));
-    }
-    // Highlight days in blue that are likely fertile
-    if (cd >= (shortest - 20) && cd <= 16) classes.push('fertile-number');
-
-    return classes.join(' ');
-}
-
-// Allows the user to skip to the next or previous week
-function changeWeek(dir) {
-    currentViewDate.setDate(currentViewDate.getDate() + (dir * 7));
-    renderWeek();
-}
-
-// Handles saving data (Period, LH, etc.) when a button is clicked
-function logVal(field, val) {
-    const key = selectedDate.toISOString().split('T')[0];
-    if (!userData.dailyLogs[key]) userData.dailyLogs[key] = {};
-    // If user clicks an active button, delete the data (Toggle off)
-    if (userData.dailyLogs[key][field] === val) {
-        delete userData.dailyLogs[key][field];
-    } else {
-        // Otherwise, save the new value (Toggle on)
-        userData.dailyLogs[key][field] = val;
-    }
-    // Permanently save to the phone's memory
+function saveData() {
     localStorage.setItem('cycleData', JSON.stringify(userData));
-    // Refresh the screen to show the new data
-    renderWeek();   
+}
+
+// Rule 5 & Rule 1: Finding period starts and averages
+function getPeriodStarts() {
+    const dates = Object.keys(userData.dailyLogs)
+        .filter(date => userData.dailyLogs[date].period === 'yes')
+        .sort();
+    return dates.filter((date, i) => {
+        const prev = new Date(date);
+        prev.setDate(prev.getDate() - 1);
+        return !dates.includes(prev.toISOString().split('T')[0]);
+    });
+}
+
+function getCycleAnalysis() {
+    const starts = getPeriodStarts();
+    const defaults = { avgLength: 28, shortest: 28, lastStart: starts[starts.length - 1] || null };
+    
+    if (starts.length < 2) return defaults;
+
+    let lengths = [];
+    for (let i = 1; i < starts.length; i++) {
+        const diff = (new Date(starts[i]) - new Date(starts[i-1])) / 86400000;
+        lengths.push(diff);
+    }
+
+    return {
+        avgLength: Math.round(lengths.slice(-12).reduce((a,b) => a+b, 0) / Math.min(lengths.length, 12)) || 28,
+        shortest: Math.min(...lengths.slice(-6)) || 28,
+        lastStart: starts[starts.length - 1]
+    };
+}
+
+function changeWeek(direction) {
+    selectedDate.setDate(selectedDate.getDate() + (direction * 7));
+    renderWeek();
     updateStatus();
 }
 
-// Updates the buttons and inputs to reflect what is saved for the selected day
+function logVal(key, val) {
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    if (!userData.dailyLogs[dateStr]) userData.dailyLogs[dateStr] = {};
+
+    if (userData.dailyLogs[dateStr][key] === val) {
+        delete userData.dailyLogs[dateStr][key];
+    } else {
+        userData.dailyLogs[dateStr][key] = val;
+    }
+    saveData();
+    renderWeek();
+    updateStatus();
+}
+
+function renderWeek() {
+    const grid = document.getElementById('calendar-grid');
+    grid.innerHTML = '';
+    const analysis = getCycleAnalysis();
+    
+    // Header for S M T W T F S
+    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const headerRow = document.createElement('div');
+    headerRow.className = 'days-header';
+    days.forEach(day => { headerRow.innerHTML += `<span>${day}</span>`; });
+    if (document.querySelector('.days-header')) document.querySelector('.days-header').remove();
+    grid.parentElement.insertBefore(headerRow, grid);
+
+    // Baseline Predictions (Rule 1)
+    let predOvu = null;
+    if (analysis.lastStart) {
+        let nextP = new Date(analysis.lastStart);
+        nextP.setDate(nextP.getDate() + analysis.avgLength);
+        predOvu = new Date(nextP);
+        predOvu.setDate(predOvu.getDate() - 14);
+    }
+
+    for (let i = -3; i <= 3; i++) {
+        let d = new Date(selectedDate);
+        d.setDate(d.getDate() + i);
+        const dStr = d.toISOString().split('T')[0];
+        const log = userData.dailyLogs[dStr] || {};
+
+        let actualOvu = predOvu ? new Date(predOvu) : null;
+        let hasLH = false;
+
+        // Rule 4: Lock Ovu to day after LH Pos
+        if (analysis.lastStart) {
+            Object.keys(userData.dailyLogs).forEach(day => {
+                if (day >= analysis.lastStart && userData.dailyLogs[day].lh === 'pos') {
+                    actualOvu = new Date(day);
+                    actualOvu.setDate(actualOvu.getDate() + 1);
+                    hasLH = true;
+                }
+            });
+        }
+
+        // Rule 3: Push Ovu forward if no LH+
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (!hasLH && actualOvu && today > actualOvu) {
+            actualOvu = new Date(today);
+        }
+
+        // Rule 5: Adjust if next period started
+        const nextP = getPeriodStarts().find(s => s > analysis.lastStart);
+        if (nextP && !hasLH) {
+            actualOvu = new Date(nextP);
+            actualOvu.setDate(actualOvu.getDate() - 14);
+        }
+
+        // Rule 2: Fertile Window
+        let isFertile = false;
+        if (analysis.lastStart && actualOvu) {
+            const cd = Math.floor((d - new Date(analysis.lastStart)) / 86400000) + 1;
+            const fertStart = analysis.shortest - 20;
+            const fertEnd = new Date(actualOvu); fertEnd.setDate(fertEnd.getDate() + 2);
+            if (cd >= fertStart && d <= fertEnd) isFertile = true;
+        }
+
+        // Build Cell
+        const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
+        let cell = document.createElement('div');
+        cell.className = `day-cell ${d.toDateString() === today.toDateString() ? 'today' : ''} 
+                          ${d.toDateString() === selectedDate.toDateString() ? 'selected' : ''} 
+                          ${isOvuDay ? 'ovulation-day' : ''} 
+                          ${isOvuDay && log.pdg === 'pos' ? 'confirmed' : ''} 
+                          ${isFertile ? 'fertile-window' : ''}`;
+        
+        cell.innerHTML = `<span class="day-number">${d.getDate()}</span>`;
+        cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
+        grid.appendChild(cell);
+    }
+
+    document.getElementById('month-display').innerText = selectedDate.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+    document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+}
+
 function updateStatus() {
-    const dateKey = selectedDate.toISOString().split('T')[0];
-    const log = userData.dailyLogs[dateKey] || {};
-    // Turn off the "Active" look for all buttons
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const log = userData.dailyLogs[dateStr] || {};
     document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
 
-    // If data exists, turn on the "Active" look for the specific buttons
-    if (log.period === 'yes') document.querySelector('button[onclick*="period\', \'yes\'"]')?.classList.add('active');
-    if (log.period === 'no') document.querySelector('button[onclick*="period\', \'no\'"]')?.classList.add('active');
-    if (log.lh === 'pos') document.querySelector('button[onclick*="lh\', \'pos\'"]')?.classList.add('active');
-    if (log.lh === 'neg') document.querySelector('button[onclick*="lh\', \'neg\'"]')?.classList.add('active');
-    if (log.cb === 'none') document.querySelector('button[onclick*="cb\', \'none\'"]')?.classList.add('active');
-    if (log.cb === 'high') document.querySelector('button[onclick*="cb\', \'high\'"]')?.classList.add('active');
-    if (log.cb === 'peak') document.querySelector('button[onclick*="cb\', \'peak\'"]')?.classList.add('active');
-    if (log.pdg === 'pos') document.querySelector('button[onclick*="pdg\', \'pos\'"]')?.classList.add('active');
-    if (log.pdg === 'neg') document.querySelector('button[onclick*="pdg\', \'neg\'"]')?.classList.add('active');
+    // Explicit highlight logic
+    if (log.period === 'yes') document.querySelector("button[onclick*=\"'period', 'yes'\"]")?.classList.add('active');
+    if (log.period === 'no') document.querySelector("button[onclick*=\"'period', 'no'\"]")?.classList.add('active');
+    if (log.lh === 'pos') document.querySelector("button[onclick*=\"'lh', 'pos'\"]")?.classList.add('active');
+    if (log.lh === 'neg') document.querySelector("button[onclick*=\"'lh', 'neg'\"]")?.classList.add('active');
+    if (log.cb === 'none') document.querySelector("button[onclick*=\"'cb', 'none'\"]")?.classList.add('active');
+    if (log.cb === 'high') document.querySelector("button[onclick*=\"'cb', 'high'\"]")?.classList.add('active');
+    if (log.cb === 'peak') document.querySelector("button[onclick*=\"'cb', 'peak'\"]")?.classList.add('active');
+    if (log.pdg === 'pos') document.querySelector("button[onclick*=\"'pdg', 'pos'\"]")?.classList.add('active');
+    if (log.pdg === 'neg') document.querySelector("button[onclick*=\"'pdg', 'neg'\"]")?.classList.add('active');
+    if (log.cm === 'none') document.querySelector("button[onclick*=\"'cm', 'none'\"]")?.classList.add('active');
+    if (log.cm === 'watery') document.querySelector("button[onclick*=\"'cm', 'watery'\"]")?.classList.add('active');
+    if (log.cm === 'creamy') document.querySelector("button[onclick*=\"'cm', 'creamy'\"]")?.classList.add('active');
+    if (log.cm === 'spotting') document.querySelector("button[onclick*=\"'cm', 'spotting'\"]")?.classList.add('active');
 
-    // Update the text input and dropdown
-    const tempInput = document.getElementById('temp-input');
-    const cmSelect = document.getElementById('cm-select');
-    if (tempInput) tempInput.value = log.temp || '';
-    if (cmSelect) cmSelect.value = log.cm || 'none';
+    document.getElementById('temp-input').value = log.temp || '';
 }
 
-// --- 4. DATA EXPORT ---
-
-// Saves a CSV file for opening in Excel or Google Sheets
-function downloadCSV() {
-    const logs = userData.dailyLogs;
-    if (Object.keys(logs).length === 0) return alert("No data yet!");
-    const headers = ["Date", "Period", "LH", "Temp", "CM"];
-    let csvRows = [headers.join(",")];
-    const sortedDates = Object.keys(logs).sort();
-    for (const date of sortedDates) {
-        const d = logs[date];
-        csvRows.push([date, d.period||"", d.lh||"", d.temp||"", d.cm||""].join(","));
-    }
-    const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cycle_analytics.csv`;
-    a.click();
-}
-
-// Saves a JSON file for technical backup
-function downloadBackup() {
-    const data = localStorage.getItem('cycleData');
-    if (!data) return alert("No data yet!");
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cycle_backup.json`;
-    a.click();
-}
-
-
-
-
-
-
-
-
-
+renderWeek();
+updateStatus();
