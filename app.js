@@ -6,7 +6,7 @@ function saveData() {
     localStorage.setItem('cycleData', JSON.stringify(userData));
 }
 
-// Data Analysis Helpers
+// --- CYCLE ANALYSIS LOGIC ---
 function getPeriodStarts() {
     const dates = Object.keys(userData.dailyLogs)
         .filter(date => userData.dailyLogs[date].period === 'yes')
@@ -34,6 +34,13 @@ function getCycleAnalysis() {
     };
 }
 
+// --- UI UPDATES ---
+function changeWeek(direction) {
+    selectedDate.setDate(selectedDate.getDate() + (direction * 7));
+    renderWeek();
+    updateStatus();
+}
+
 function logVal(key, val) {
     const dateStr = selectedDate.toISOString().split('T')[0];
     if (!userData.dailyLogs[dateStr]) userData.dailyLogs[dateStr] = {};
@@ -48,25 +55,19 @@ function logVal(key, val) {
     updateStatus();
 }
 
-function changeWeek(direction) {
-    selectedDate.setDate(selectedDate.getDate() + (direction * 7));
-    renderWeek();
-    updateStatus();
-}
-
 function renderWeek() {
     const grid = document.getElementById('week-grid');
     grid.innerHTML = '';
     const analysis = getCycleAnalysis();
     const today = new Date(); today.setHours(0,0,0,0);
 
-    // Baseline Prediction logic
+    // Baseline Prediction
     let predOvu = null;
     if (analysis.lastStart) {
         let nextP = new Date(analysis.lastStart);
         nextP.setDate(nextP.getDate() + analysis.avgLength);
         predOvu = new Date(nextP);
-        predOvu.setDate(predOvu.getDate() - 14);
+        predOvu.setDate(nextP.getDate() - 14);
     }
 
     for (let i = -3; i <= 3; i++) {
@@ -78,7 +79,7 @@ function renderWeek() {
         let actualOvu = predOvu ? new Date(predOvu) : null;
         let hasLH = false;
 
-        // Rule 4: LH+ Lock
+        // Apply Rules 3, 4, 5
         if (analysis.lastStart) {
             Object.keys(userData.dailyLogs).forEach(day => {
                 if (day >= analysis.lastStart && userData.dailyLogs[day].lh === 'pos') {
@@ -88,18 +89,14 @@ function renderWeek() {
                 }
             });
         }
-
-        // Rule 3: Push Forward
         if (!hasLH && actualOvu && today > actualOvu) actualOvu = new Date(today);
-
-        // Rule 5: Period Back-calculate
         const nextPStart = getPeriodStarts().find(s => s > analysis.lastStart);
         if (nextPStart && !hasLH) {
             actualOvu = new Date(nextPStart);
             actualOvu.setDate(actualOvu.getDate() - 14);
         }
 
-        // Rule 2: Fertile Window
+        // Fertile Window Logic (Rule 2)
         let isFertile = false;
         if (analysis.lastStart && actualOvu) {
             const cd = Math.floor((d - new Date(analysis.lastStart)) / 86400000) + 1;
@@ -108,15 +105,31 @@ function renderWeek() {
         }
 
         const isOvuDay = actualOvu && d.toDateString() === actualOvu.toDateString();
-        
+        const isConfirmed = log.pdg === 'pos';
+
+        // Create the cell using your CSS classes
         let cell = document.createElement('div');
-        cell.className = `day-cell ${d.toDateString() === today.toDateString() ? 'today' : ''} 
-                          ${d.toDateString() === selectedDate.toDateString() ? 'selected' : ''} 
-                          ${isOvuDay ? 'ovulation-day' : ''} 
-                          ${isOvuDay && log.pdg === 'pos' ? 'confirmed' : ''} 
-                          ${isFertile ? 'fertile-window' : ''}`;
+        cell.className = 'day-cell';
+        if (d.toDateString() === selectedDate.toDateString()) cell.classList.add('selected');
         
-        cell.innerHTML = `<span>${d.getDate()}</span>`;
+        let numberSpan = document.createElement('div');
+        numberSpan.className = 'day-number';
+        if (d.toDateString() === today.toDateString()) numberSpan.classList.add('today-bold');
+        if (isOvuDay) numberSpan.classList.add('ovulation-day');
+        if (isOvuDay && isConfirmed) numberSpan.classList.add('confirmed');
+        if (isFertile) cell.classList.add('post-ovulation'); // Blue tint
+
+        numberSpan.innerText = d.getDate();
+        cell.appendChild(numberSpan);
+
+        // Optional Cycle Day label
+        if (analysis.lastStart) {
+            let cdLabel = document.createElement('div');
+            cdLabel.className = 'cycle-day';
+            cdLabel.innerText = `CD${Math.floor((d - new Date(analysis.lastStart))/86400000)+1}`;
+            cell.appendChild(cdLabel);
+        }
+
         cell.onclick = () => { selectedDate = new Date(d); renderWeek(); updateStatus(); };
         grid.appendChild(cell);
     }
@@ -128,18 +141,14 @@ function updateStatus() {
     const dateStr = selectedDate.toISOString().split('T')[0];
     const log = userData.dailyLogs[dateStr] || {};
     
-    // Update Display Text
     document.getElementById('selected-date-display').innerText = selectedDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
     
-    // Prediction logic for the Action Card
     const analysis = getCycleAnalysis();
-    let cdText = analysis.lastStart ? `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
-    document.getElementById('prediction-text').innerText = cdText;
+    document.getElementById('prediction-text').innerText = analysis.lastStart ? 
+        `CD ${Math.floor((selectedDate - new Date(analysis.lastStart))/86400000)+1}` : "--";
 
-    // Reset buttons
+    // Update buttons
     document.querySelectorAll('.btn-group button').forEach(btn => btn.classList.remove('active'));
-
-    // Highlight active logs
     Object.keys(log).forEach(key => {
         const val = log[key];
         const btn = document.querySelector(`button[onclick="logVal('${key}', '${val}')"]`);
@@ -147,18 +156,5 @@ function updateStatus() {
     });
 
     // Update select and input
-    document.getElementById('cm-select').value = log.cm || 'none';
-    document.getElementById('temp-input').value = log.temp || '';
-}
-
-// Backup functions
-function downloadBackup() {
-    const blob = new Blob([JSON.stringify(userData)], {type: 'application/json'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `cycle_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-}
-
-renderWeek();
-updateStatus();
+    if (document.getElementById('cm-select')) document.getElementById('cm-select').value = log.cm || 'none';
+    document.getElementById('
